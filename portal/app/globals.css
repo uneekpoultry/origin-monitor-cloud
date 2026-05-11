@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html, body {
+    background: #0a0f0a;
+    color: #ffffff;
+    font-feature-settings: "cv11", "ss01";
+  }
+
+  ::selection {
+    background: #c49a46;
+    color: #0a0f0a;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-md bg-grass px-5 py-2.5 text-sm font-semibold text-ink transition hover:bg-light focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-light disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center rounded-md border border-white/10 px-5 py-2.5 text-sm font-semibold text-white transition hover:border-light/40 hover:bg-white/5;
+  }
+
+  .input {
+    @apply w-full rounded-md border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white placeholder:text-white/40 focus:border-grass focus:outline-none;
+  }
+
+  .card {
+    @apply rounded-xl border border-white/15 bg-white/[0.03] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)];
+  }
+}
+
+.grain {
+  background-image:
+    radial-gradient(at 20% 10%, rgba(196,154,70,0.12), transparent 60%),
+    radial-gradient(at 80% 90%, rgba(138,104,24,0.18), transparent 55%);
+}

@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Origin Monitor — Hatch page redesign mockup</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            ink:    '#0a0f0a',
+            grass:  '#4a9e3f',
+            gold:   '#c49a46',
+            light:  '#e5c880',
+            bronze: '#8a6818',
+            cream:  '#f7f2e3',
+          },
+          fontFamily: {
+            sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Inter', 'system-ui', 'sans-serif'],
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    body { background: #0a0f0a; color: #fff; font-feature-settings: "cv11", "ss01"; }
+    .grain {
+      background-image:
+        radial-gradient(at 20% 10%, rgba(196,154,70,0.06), transparent 60%),
+        radial-gradient(at 80% 90%, rgba(138,104,24,0.08), transparent 55%);
+    }
+    .tabular-nums { font-variant-numeric: tabular-nums; }
+    .section-anchor {
+      border-left: 3px solid #c49a46;
+      padding-left: 1rem;
+    }
+    .section-anchor.ambient { border-left-color: #fbbf24; }
+    /* Subtle card lift on hover */
+    .card-hover { transition: all 0.15s ease; }
+    .card-hover:hover {
+      border-color: rgba(229, 200, 128, 0.45) !important;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+  </style>
+</head>
+<body class="grain min-h-screen">
+
+  <!-- ============================================================
+       Design-annotation banner (remove in production)
+       ============================================================ -->
+  <div class="border-b border-white/5 bg-black/60">
+    <div class="mx-auto max-w-6xl px-6 py-3 text-xs text-white/50">
+      <span class="font-semibold text-light">MOCKUP —</span>
+      redesigned hatch detail page.
+      Design choices annotated inline with
+      <span class="inline-block rounded bg-light/10 px-1.5 py-0.5 text-[10px] font-mono text-light">PURPLE</span>
+      comments. Hit Ctrl+F, type "NOTE:" to see them all.
+    </div>
+  </div>
+
+  <!-- ============================================================
+       App header (unchanged from current)
+       ============================================================ -->
+  <header class="border-b border-white/5">
+    <div class="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
+      <div class="flex items-center gap-3">
+        <span class="inline-block h-3.5 w-3.5 rounded-[3px] bg-gold"></span>
+        <span class="text-base font-bold tracking-tight">
+          Origin <span class="text-light">Monitor</span>
+        </span>
+      </div>
+      <div class="flex items-center gap-4 text-sm">
+        <a href="#" class="text-light hover:underline">Admin</a>
+        <span class="text-white/60">andrew@uneekpoultry.com.au</span>
+        <a href="#" class="text-white/60 hover:text-white">Sign out</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-6xl px-6 py-10">
+
+    <!-- breadcrumb -->
+    <a href="#" class="text-sm text-white/50 hover:text-white/80">← Dashboard</a>
+
+    <!-- ============================================================
+         HERO — hatch name, status, actions
+         NOTE: pattern = small uppercase label → large name → status row.
+         Typography hierarchy carries the weight, not cards.
+         ============================================================ -->
+    <section class="mt-4">
+      <p class="text-xs font-semibold uppercase tracking-[0.2em] text-light">
+        Chicken · 24 eggs
+      </p>
+      <div class="mt-2 flex items-start justify-between gap-4">
+        <div>
+          <h1 class="text-4xl font-bold tracking-tight text-white">Test Hatch</h1>
+          <div class="mt-3 flex flex-wrap items-center gap-3 text-sm">
+            <span class="inline-flex items-center gap-2 rounded-full border border-green-400/40 bg-green-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-green-300">
+              <span class="h-1.5 w-1.5 rounded-full bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.6)]"></span>
+              Active
+            </span>
+            <span class="text-white/80">Day 3 — turning</span>
+            <span class="text-white/40">·</span>
+            <span class="text-white/60">Set 21/04/2026 at 13:58</span>
+          </div>
+        </div>
+        <!-- NOTE: primary actions always visible in hero. No hunting. -->
+        <div class="flex flex-wrap gap-2">
+          <button class="rounded-md border border-white/15 bg-white/[0.02] px-4 py-2 text-sm font-medium text-white hover:border-white/30 hover:bg-white/[0.05]">↻ Refresh</button>
+          <button class="rounded-md border border-white/15 bg-white/[0.02] px-4 py-2 text-sm font-medium text-white hover:border-white/30 hover:bg-white/[0.05]">Edit details</button>
+          <button class="rounded-md border border-white/15 bg-white/[0.02] px-4 py-2 text-sm font-medium text-white hover:border-white/30 hover:bg-white/[0.05]">📧 Email report</button>
+          <button class="rounded-md bg-gold px-4 py-2 text-sm font-semibold text-ink hover:bg-light">↓ Download report</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         AT A GLANCE — hero stat row
+         NOTE: this is the "farmer walks up, what do I need to know" row.
+         Four big numbers side by side. No labels hidden in cards. Most
+         important numbers biggest. Ambient is amber and visually distinct.
+         ============================================================ -->
+    <section class="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+
+      <!-- Day card -->
+      <div class="rounded-xl border border-white/15 bg-white/[0.03] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/40">
+          Progress
+        </div>
+        <div class="mt-2 flex items-baseline gap-2 tabular-nums">
+          <span class="text-3xl font-bold text-white">3</span>
+          <span class="text-sm text-white/40">of 21 days</span>
+        </div>
+        <div class="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-white/5">
+          <div class="h-full bg-gradient-to-r from-grass to-light" style="width:14%"></div>
+        </div>
+        <div class="mt-2 text-xs text-white/50">18 days to hatch</div>
+      </div>
+
+      <!-- Temp card -->
+      <div class="rounded-xl border border-white/15 bg-white/[0.03] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/40">
+          Incubator temp
+        </div>
+        <div class="mt-2 flex items-baseline gap-2 tabular-nums">
+          <span class="text-3xl font-bold text-white">37.52</span>
+          <span class="text-sm text-white/40">°C</span>
+        </div>
+        <div class="mt-3 text-xs text-white/50">Target 37.25–37.75 °C</div>
+        <div class="mt-1 flex items-center gap-1.5">
+          <span class="h-1.5 w-1.5 rounded-full bg-green-400"></span>
+          <span class="text-xs text-green-300">In range</span>
+        </div>
+      </div>
+
+      <!-- Humidity card -->
+      <div class="rounded-xl border border-white/15 bg-white/[0.03] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/40">
+          Humidity
+        </div>
+        <div class="mt-2 flex items-baseline gap-2 tabular-nums">
+          <span class="text-3xl font-bold text-white">55.2</span>
+          <span class="text-sm text-white/40">%RH</span>
+        </div>
+        <div class="mt-3 text-xs text-white/50">Target 50–55 %</div>
+        <div class="mt-1 flex items-center gap-1.5">
+          <span class="h-1.5 w-1.5 rounded-full bg-green-400"></span>
+          <span class="text-xs text-green-300">In range</span>
+        </div>
+      </div>
+
+      <!-- Room temp card — AMBER, distinct -->
+      <!-- NOTE: amber border + amber text make it pop as "different type" -->
+      <div class="rounded-xl border border-amber-400/40 bg-amber-400/[0.06] p-5 shadow-[inset_0_1px_0_rgba(255,200,80,0.06)]">
+        <div class="flex items-center justify-between">
+          <div class="text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-300/70">
+            Room temp
+          </div>
+          <span class="rounded-full border border-amber-300/50 bg-amber-300/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-widest text-amber-200">
+            Ambient
+          </span>
+        </div>
+        <div class="mt-2 flex items-baseline gap-2 tabular-nums">
+          <span class="text-3xl font-bold text-amber-100">22.4</span>
+          <span class="text-sm text-amber-200/60">°C</span>
+          <span class="ml-2 text-sm text-amber-200/60">/ 58% RH</span>
+        </div>
+        <div class="mt-3 text-xs text-amber-200/60">
+          Shed — Room Temp
+        </div>
+        <div class="mt-1 text-[10px] text-amber-200/40">
+          Context only — not mixed into incubator averages
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         PROGRESS TIMELINE — visual anchor
+         NOTE: replaces the bare progress bar from the current UI with
+         something with visual rhythm. Markers for Lockdown + Hatch day.
+         ============================================================ -->
+    <section class="mt-10 rounded-xl border border-white/15 bg-white/[0.02] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+      <div class="flex items-baseline justify-between">
+        <div>
+          <p class="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/40">
+            Incubation timeline
+          </p>
+          <h2 class="mt-1 text-xl font-bold tracking-tight">Turning phase</h2>
+        </div>
+        <div class="text-sm text-white/40">21 April → 12 May · 21 days</div>
+      </div>
+
+      <!-- Visual track with markers -->
+      <div class="relative mt-6 h-2 w-full rounded-full bg-white/5">
+        <div class="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-grass to-light" style="width:14%"></div>
+        <!-- Today marker -->
+        <div class="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-light bg-ink" style="left:14%">
+          <div class="absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-light px-2 py-0.5 text-[10px] font-semibold text-ink">
+            Day 3 · today
+          </div>
+        </div>
+        <!-- Lockdown marker -->
+        <div class="absolute top-1/2 h-2 w-0.5 -translate-y-1/2 bg-bronze" style="left:85%"></div>
+        <!-- Hatch marker -->
+        <div class="absolute top-1/2 h-2 w-0.5 -translate-y-1/2 bg-grass" style="left:100%"></div>
+      </div>
+      <div class="mt-4 flex justify-between text-xs text-white/50 tabular-nums">
+        <span>Day 1 · Set 21/04</span>
+        <span class="text-bronze">Day 18 · Lockdown 09/05</span>
+        <span class="text-grass">Day 21 · Hatch 12/05</span>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         SECTION DIVIDER — major module boundary
+         NOTE: 4px gold accent + small label + large heading = section
+         boundaries farmers cannot miss. Mirrors Linear / Stripe / Notion.
+         ============================================================ -->
+    <div class="mt-16 section-anchor">
+      <p class="text-[10px] font-semibold uppercase tracking-[0.2em] text-light">
+        Section 01
+      </p>
+      <h2 class="mt-1 text-2xl font-bold tracking-tight">Sensors &amp; devices</h2>
+      <p class="mt-1 text-sm text-white/50">
+        Which sensors are reporting for this hatch, and what they're seeing right now.
+      </p>
+    </div>
+
+    <!-- Subsection: incubator sensors -->
+    <section class="mt-6">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-semibold uppercase tracking-widest text-white/50">
+          Incubator sensors <span class="text-white/30">(3)</span>
+        </h3>
+        <button class="text-sm text-light hover:underline">Edit sensors</button>
+      </div>
+      <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <!-- Sensor card x3 -->
+        <a class="card-hover rounded-xl border border-white/15 bg-white/[0.03] p-5">
+          <div class="flex items-start justify-between gap-2">
+            <h4 class="font-semibold">OriginPro</h4>
+            <span class="rounded-full border border-light/30 bg-light/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-light">Pro</span>
+          </div>
+          <div class="mt-0.5 text-xs text-white/40">Last seen 42s ago</div>
+          <div class="mt-4 flex items-baseline gap-6 tabular-nums">
+            <div>
+              <div class="text-[10px] uppercase tracking-widest text-white/40">Temp</div>
+              <div class="mt-1 text-2xl font-semibold text-white">37.52°C</div>
+            </div>
+            <div>
+              <div class="text-[10px] uppercase tracking-widest text-white/40">Humidity</div>
+              <div class="mt-1 text-2xl font-semibold text-white">55.2%</div>
+            </div>
+          </div>
+        </a>
+        <a class="card-hover rounded-xl border border-white/15 bg-white/[0.03] p-5">
+          <div class="flex items-start justify-between gap-2">
+            <h4 class="font-semibold">OriginPro - 2</h4>
+            <span class="rounded-full border border-light/30 bg-light/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-light">Pro</span>
+          </div>
+          <div class="mt-0.5 text-xs text-white/40">Last seen 39s ago</div>
+          <div class="mt-4 flex items-baseline gap-6 tabular-nums">
+            <div>
+              <div class="text-[10px] uppercase tracking-widest text-white/40">Temp</div>
+              <div class="mt-1 text-2xl font-semibold text-white">37.48°C</div>
+            </div>
+            <div>
+              <div class="text-[10px] uppercase tracking-widest text-white/40">Humidity</div>
+              <div class="mt-1 text-2xl font-semibold text-white">55.0%</div>
+            </div>
+          </div>
+        </a>
+        <a class="card-hover rounded-xl border border-white/15 bg-white/[0.03] p-5">
+          <div class="flex items-start justify-between gap-2">
+            <h4 class="font-semibold">OriginLite</h4>
+            <span class="rounded-full border border-light/30 bg-light/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-light">Lite</span>
+          </div>
+          <div class="mt-0.5 text-xs text-white/40">Last seen 40s ago</div>
+          <div class="mt-4 flex items-baseline gap-6 tabular-nums">
+            <div>
+              <div class="text-[10px] uppercase tracking-widest text-white/40">Temp</div>
+              <div class="mt-1 text-2xl font-semibold text-white">37.56°C</div>
+            </div>
+          </div>
+        </a>
+      </div>
+    </section>
+
+    <!-- Subsection: room / ambient — amber styled -->
+    <!-- NOTE: exact same component shape as incubator sensors, but amber
+         colour tokens. Visual consistency + obvious category difference. -->
+    <section class="mt-8">
+      <h3 class="text-sm font-semibold uppercase tracking-widest text-amber-300/70">
+        Room sensor <span class="text-amber-300/40">(1)</span>
+      </h3>
+      <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <a class="card-hover rounded-xl border border-amber-400/40 bg-amber-400/[0.06] p-5">
+          <div class="flex items-start justify-between gap-2">
+            <h4 class="font-semibold text-amber-100">Shed — Room Temp</h4>
+            <span class="rounded-full border border-amber-300/50 bg-amber-300/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-amber-200">Ambient</span>
+          </div>
+          <div class="mt-0.5 text-xs text-amber-200/50">Last seen 41s ago</div>
+          <div class="mt-4 flex items-baseline gap-6 tabular-nums">
+            <div>
+              <div class="text-[10px] uppercase tracking-widest text-amber-200/60">Room °C</div>
+              <div class="mt-1 text-2xl font-semibold text-amber-100">22.4°C</div>
+            </div>
+            <div>
+              <div class="text-[10px] uppercase tracking-widest text-amber-200/60">Room %RH</div>
+              <div class="mt-1 text-2xl font-semibold text-amber-100">58.0%</div>
+            </div>
+          </div>
+        </a>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         SECTION 2 — DAILY LOG + details (tabbed)
+         NOTE: replaces the stacked sections below. Tabs let the page
+         stay short. Farmers who want detail drill in; everyone else
+         gets the at-a-glance + sensors above and leaves.
+         ============================================================ -->
+    <div class="mt-16 section-anchor">
+      <p class="text-[10px] font-semibold uppercase tracking-[0.2em] text-light">
+        Section 02
+      </p>
+      <h2 class="mt-1 text-2xl font-bold tracking-tight">Daily tracking</h2>
+      <p class="mt-1 text-sm text-white/50">
+        Per-day readings, turnings, candling notes, milestones.
+      </p>
+    </div>
+
+    <!-- Tab strip -->
+    <div class="mt-6 flex flex-wrap gap-1 border-b border-white/10">
+      <button class="relative px-4 py-2.5 text-sm font-semibold text-white">
+        Daily log
+        <span class="absolute inset-x-0 -bottom-[1px] h-[2px] bg-light"></span>
+      </button>
+      <button class="px-4 py-2.5 text-sm text-white/50 hover:text-white">Milestones</button>
+      <button class="px-4 py-2.5 text-sm text-white/50 hover:text-white">Hatch timing</button>
+      <button class="px-4 py-2.5 text-sm text-white/50 hover:text-white">Egg weights</button>
+      <button class="px-4 py-2.5 text-sm text-white/50 hover:text-white">Raw readings</button>
+    </div>
+
+    <!-- Ambient banner -->
+    <div class="mt-6 rounded-lg border border-amber-400/30 bg-amber-400/[0.06] px-4 py-3 text-xs text-amber-200/90">
+      <span class="font-semibold">Room context:</span>
+      Shed — Room Temp · now <span class="tabular-nums">22.4°C / 58%</span>
+      <span class="ml-2 text-white/40">(room readings shown in amber columns for context only — not mixed into incubator averages)</span>
+    </div>
+
+    <!-- Daily log table -->
+    <div class="mt-4 overflow-x-auto rounded-xl border border-white/10">
+      <table class="w-full min-w-[840px] text-sm">
+        <thead class="bg-white/[0.02] text-left text-[10px] uppercase tracking-widest text-white/40">
+          <tr>
+            <th class="px-3 py-3">Day</th>
+            <th class="px-3 py-3">Date</th>
+            <th class="px-3 py-3">Temp avg</th>
+            <th class="px-3 py-3">Min</th>
+            <th class="px-3 py-3">Max</th>
+            <th class="px-3 py-3">Humid avg</th>
+            <th class="px-3 py-3">Min</th>
+            <th class="px-3 py-3">Max</th>
+            <th class="px-3 py-3 text-amber-300/80">Room °C</th>
+            <th class="px-3 py-3 text-amber-300/80">Room %RH</th>
+            <th class="px-3 py-3">Turnings</th>
+            <th class="px-3 py-3">Notes</th>
+          </tr>
+        </thead>
+        <tbody class="tabular-nums">
+          <tr class="border-t border-white/5">
+            <td class="px-3 py-3 font-semibold">1</td>
+            <td class="px-3 py-3 text-white/60">21/04/2026</td>
+            <td class="px-3 py-3">37.48</td>
+            <td class="px-3 py-3 text-white/60">37.21</td>
+            <td class="px-3 py-3 text-white/60">37.82</td>
+            <td class="px-3 py-3">54.2</td>
+            <td class="px-3 py-3 text-white/60">48.1</td>
+            <td class="px-3 py-3 text-white/60">57.9</td>
+            <td class="px-3 py-3 text-amber-200/90">22.8</td>
+            <td class="px-3 py-3 text-amber-200/90">56</td>
+            <td class="px-3 py-3 text-white/50">6</td>
+            <td class="px-3 py-3 text-white/50 italic">Set in afternoon</td>
+          </tr>
+          <tr class="border-t border-white/5">
+            <td class="px-3 py-3 font-semibold">2</td>
+            <td class="px-3 py-3 text-white/60">22/04/2026</td>
+            <td class="px-3 py-3">37.52</td>
+            <td class="px-3 py-3 text-white/60">37.31</td>
+            <td class="px-3 py-3 text-white/60">37.75</td>
+            <td class="px-3 py-3">55.1</td>
+            <td class="px-3 py-3 text-white/60">51.2</td>
+            <td class="px-3 py-3 text-white/60">58.3</td>
+            <td class="px-3 py-3 text-amber-200/90">22.5</td>
+            <td class="px-3 py-3 text-amber-200/90">58</td>
+            <td class="px-3 py-3 text-white/50">8</td>
+            <td class="px-3 py-3 text-white/50">—</td>
+          </tr>
+          <tr class="border-t border-white/5 bg-white/[0.01]">
+            <td class="px-3 py-3 font-semibold">
+              3 <span class="ml-1 rounded bg-light/20 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-light">today</span>
+            </td>
+            <td class="px-3 py-3 text-white/60">23/04/2026</td>
+            <td class="px-3 py-3">37.51</td>
+            <td class="px-3 py-3 text-white/60">37.28</td>
+            <td class="px-3 py-3 text-white/60">37.76</td>
+            <td class="px-3 py-3">55.3</td>
+            <td class="px-3 py-3 text-white/60">52.0</td>
+            <td class="px-3 py-3 text-white/60">58.0</td>
+            <td class="px-3 py-3 text-amber-200/90">22.4</td>
+            <td class="px-3 py-3 text-amber-200/90">58</td>
+            <td class="px-3 py-3 text-white/50">—</td>
+            <td class="px-3 py-3 text-white/50">—</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ============================================================
+         SECTION 3 — HATCH DETAILS (metadata, notes, provenance)
+         NOTE: de-emphasised content (lives further down) gets lighter
+         treatment — no section anchor bar, smaller heading, muted.
+         Reserves the visual "loud" treatment for things farmers look
+         at daily.
+         ============================================================ -->
+    <div class="mt-16">
+      <h2 class="text-sm font-semibold uppercase tracking-widest text-white/40">
+        Hatch details
+      </h2>
+      <div class="mt-4 rounded-xl border border-white/10 bg-white/[0.015] p-6">
+        <dl class="grid gap-4 sm:grid-cols-2">
+          <div class="flex justify-between gap-4 text-sm">
+            <dt class="text-white/50">Breed</dt>
+            <dd>Australorp</dd>
+          </div>
+          <div class="flex justify-between gap-4 text-sm">
+            <dt class="text-white/50">Egg source</dt>
+            <dd>Own flock</dd>
+          </div>
+          <div class="flex justify-between gap-4 text-sm">
+            <dt class="text-white/50">Incubator</dt>
+            <dd>Brinsea Ovation 28 EX</dd>
+          </div>
+          <div class="flex justify-between gap-4 text-sm">
+            <dt class="text-white/50">Started</dt>
+            <dd>21/04/2026 at 13:58</dd>
+          </div>
+          <div class="flex justify-between gap-4 text-sm">
+            <dt class="text-white/50">Lockdown</dt>
+            <dd>09/05/2026 <span class="text-white/40">· day 18</span></dd>
+          </div>
+          <div class="flex justify-between gap-4 text-sm">
+            <dt class="text-white/50">Expected hatch</dt>
+            <dd>12/05/2026 <span class="text-white/40">· day 21</span></dd>
+          </div>
+        </dl>
+      </div>
+    </div>
+
+    <!-- ============================================================
+         Footer spacing
+         ============================================================ -->
+    <div class="h-24"></div>
+
+  </main>
+
+  <!-- ============================================================
+       SUMMARY of design decisions (visible on-page for your review)
+       ============================================================ -->
+  <section class="border-t border-white/10 bg-black/40">
+    <div class="mx-auto max-w-6xl px-6 py-10 text-sm">
+      <h2 class="text-lg font-semibold text-light">Design-decision summary</h2>
+      <ol class="mt-4 space-y-3 text-white/70 [counter-reset:d] list-decimal list-inside">
+        <li><strong class="text-white">Hero with typography hierarchy, not cards.</strong>
+          Small uppercase label → big name → status row. Matches Linear/Stripe/Notion.
+          Key actions always visible, right-aligned.</li>
+        <li><strong class="text-white">"At a glance" 4-up stat row.</strong>
+          What a farmer needs within 2 seconds of opening the page: days, incubator temp,
+          humidity, room temp. The ambient one is amber with "Ambient" badge — instantly
+          readable as "different kind of info."</li>
+        <li><strong class="text-white">Progress timeline visualised.</strong>
+          Current day marker, lockdown, hatch day all on the same track.
+          Replaces the bare progress bar.</li>
+        <li><strong class="text-white">Section anchors.</strong>
+          Major modules get <span class="text-light">4px gold left border</span> + small
+          uppercase "Section 01" label + large heading.
+          Impossible to miss where a section starts.
+          Ambient sections get the same treatment with an amber accent.</li>
+        <li><strong class="text-white">Generous whitespace.</strong>
+          <code class="rounded bg-white/5 px-1 py-0.5 text-[11px] text-white/60">mt-16</code>
+          between major sections (was mt-10).
+          <code class="rounded bg-white/5 px-1 py-0.5 text-[11px] text-white/60">p-6</code>
+          to <code class="rounded bg-white/5 px-1 py-0.5 text-[11px] text-white/60">p-8</code>
+          on cards (was p-5).</li>
+        <li><strong class="text-white">Tabs for the detail pile.</strong>
+          Daily log, Milestones, Timing, Egg weights, Raw readings — all behind tabs.
+          Default tab is the one farmers check daily. Keeps the page short; power users
+          drill in.</li>
+        <li><strong class="text-white">Amber discipline for all ambient UI.</strong>
+          Same amber tokens everywhere (dashboard card, hero card, sensors subsection,
+          daily log columns, banner). Once a user learns "amber = room" they never
+          re-learn.</li>
+        <li><strong class="text-white">De-emphasised metadata lives below.</strong>
+          Hatch details (breed, source, incubator model) go in a lighter section at
+          the bottom — no section anchor bar — because you read it once at hatch start
+          and rarely after.</li>
+        <li><strong class="text-white">Status badge in traffic-light convention.</strong>
+          Green "Active" with glow dot. Green/amber/red already used for sensor health.
+          Consistent.</li>
+        <li><strong class="text-white">Subtle card hover.</strong>
+          Border brightens + 1px lift + soft shadow. Tells users cards are clickable
+          without being loud.</li>
+      </ol>
+    </div>
+  </section>
+
+</body>
+</html>
