@@ -1256,7 +1256,138 @@ cadence, droplet snapshots]`
 
 ## 18. Deployment processes
 
-### 18.1 Cloud (portal + API)
+### 18.1 Git / GitHub (version control)
+
+The cloud codebase (`origin-monitor`) lives on GitHub as a **private
+repository**:
+
+```
+https://github.com/uneekpoultry/origin-monitor-cloud
+```
+
+The local working tree at
+`C:\Users\Victus\Documents\ClaudeCode\origin-monitor` is connected to
+this remote as `origin`. The Primus firmware and Origin Monitor app
+each have their own GitHub repositories (see the Primus and App
+session docs for those URLs).
+
+#### Session workflow (every Claude Code session)
+
+At the start of any work session in this repo:
+
+```bash
+git pull origin main
+```
+
+This ensures you're working against the latest tree — including any
+changes pushed by the human operator (Andrew) or by other Claude
+sessions that have access to the repo.
+
+As you make meaningful changes, commit locally with descriptive
+messages:
+
+```bash
+git add <files>
+git commit -m "brief description of the change"
+```
+
+At stable checkpoints — anything you'd want a future session to be
+able to roll back to or build on — push to GitHub:
+
+```bash
+git push origin main
+```
+
+Don't push half-finished work that breaks the type-check or fails to
+build. The remote tree should always be deployable.
+
+#### Secrets — never commit
+
+The following file patterns are **gitignored** and must never be
+committed:
+
+```
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+**/.env
+**/.env.local
+```
+
+These contain Supabase service-role keys, API tokens, and other
+credentials. A single accidental commit can leak the keys to the
+entire git history — recovery requires rotating every secret in the
+file. **Before every push, glance at the diff to be sure.**
+
+#### `.env.example` IS in the repo
+
+`api/.env.example` is tracked. It documents which environment
+variables the API expects, with placeholder values. **Whenever you
+add a new env var that the API server reads at runtime, update
+`api/.env.example` in the same commit** so future sessions and
+deployments know what config is required.
+
+Same convention applies for any future workspace that picks up env
+vars: ship a `*/.env.example` next to its `.gitignore` rule.
+
+#### What's in the repo vs what's elsewhere
+
+| In this repo | Not in this repo |
+|---|---|
+| Cloud API source (`api/`) | Primus firmware (separate repo) |
+| Web portal source (`portal/`) | Origin Monitor app source (separate repo) |
+| Supabase migrations (`supabase/migrations/`) | Database state (lives in Supabase) |
+| Architecture + ops docs (`docs/`) | Compiled binaries / artefacts |
+| `api/.env.example` | Actual `.env` files (gitignored, machine-local) |
+| Shipping / handoff scripts (`api/scripts/`) | PM2 process state (lives on the droplet) |
+
+If a thing is **derived** from something already in the repo (build
+output, generated SDK, compiled binary), don't commit it — gitignore
+it and rebuild on demand. If a thing is **source of truth** (a
+config, a migration, a doc), it belongs in the repo.
+
+#### Deployment vs version control
+
+Pushing to GitHub does NOT deploy to the droplet automatically. The
+deployment pipeline is described in §18.2 below (tar + scp + build +
+PM2 reload). Git is for version control + auditability + cross-
+session coordination. Deployment is a separate, deliberate step.
+
+#### Commit message convention
+
+Brief, imperative-mood, scope-prefixed where helpful:
+
+- `cloud: add /primus/ping warmup endpoint`
+- `migration 020: hatch_logs.lockdown_date`
+- `docs: add Git/GitHub workflow section`
+- `fix: type error in heartbeat handler`
+
+One sentence per commit is enough. The diff carries the detail.
+
+#### Branching policy
+
+Solo-developer + AI-assistant scale doesn't yet need branches. **All
+commits go to `main` directly.** When the team grows or the work
+involves an experimental refactor, switch to feature branches +
+pull requests. Until then, the linear-history pattern is simpler.
+
+#### Rollback
+
+If a push breaks something on the droplet, options are:
+
+1. **Revert the offending commit:** `git revert <sha>`, push, redeploy.
+2. **Reset main to the last known good:** `git reset --hard <sha>` +
+   `git push --force origin main` — destructive, only do this if no
+   other session has pulled.
+3. **Roll back the droplet only:** Keep the bad commit in git but
+   re-deploy from a previous tarball. Useful when the bug is in
+   deploy-time config rather than source.
+
+In practice (1) is overwhelmingly the right answer.
+
+### 18.2 Cloud (portal + API)
 
 Pattern: tar source → scp to droplet → build on droplet → PM2 reload.
 
@@ -1276,7 +1407,7 @@ ssh user@170.64.219.199 "
 "
 ```
 
-### 18.2 Database migrations
+### 18.3 Database migrations
 
 1. Author SQL in `supabase/migrations/NNN_description.sql`
 2. Open Supabase Dashboard → SQL Editor
@@ -1288,7 +1419,7 @@ ssh user@170.64.219.199 "
 Migrations are append-only — never edit a migration that's been run
 in production. Make a follow-up migration instead.
 
-### 18.3 Primus firmware
+### 18.4 Primus firmware
 
 #### Build
 
@@ -1398,7 +1529,7 @@ Glyph range covers digits + space + `%` + `-` + `.` + `°` (the only chars used 
 - Flash time on this hardware: ~12 s at 921 600 baud over USB-C
 - No CI today. All builds run locally on a single development machine.
 
-### 18.4 App build
+### 18.5 App build
 
 #### Build commands
 
