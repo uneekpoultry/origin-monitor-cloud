@@ -36,8 +36,17 @@ bool     phase4_aborted_mid_batch = false;
 const char* skip_reason = nullptr;   // null = Phase 4 ran. Otherwise:
                                      // "wifi_not_connected"
                                      // "api_key_empty"
-                                     // "no_records_in_buffer"
 ```
+
+> **Enum correction (2026-05-18, confirmed with Primus session):**
+> `no_records_in_buffer` is **removed** from `skip_reason`. An empty
+> ring buffer is **not a skip** — it maps to `fine_status: "no_data"`
+> (the `phase1_pushed == 0` branch below), which the deployed cloud
+> handler treats as a clean fulfilled-with-zero: no retry, no
+> `primus_events` warn. Mapping empty→`skipped` would trigger pointless
+> retries and false support warnings for a sensor that simply had
+> nothing new. The derivation order below already yields the correct
+> result once empty no longer sets `skip_reason`.
 
 At the end of the resync (after Phase 5 cleanup), derive a `fine_status`:
 

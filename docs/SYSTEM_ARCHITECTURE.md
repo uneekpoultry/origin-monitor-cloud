@@ -851,22 +851,60 @@ makes "well" the easy path):
 - **The empty clip-in bay** labelled "Add Primus Mini here" is a
   silent, zero-annoyance passive upsell.
 
+#### Sourcing — Year 1 (Waveshare off-the-shelf) → Phase 2 (own/OEM at volume)
+
+> **Decided 2026-05-18.** Year 1 is priced and built on Waveshare
+> off-the-shelf boards (zero PCB/PCBA NRE, fastest to market, validates
+> volume). Custom/OEM boards only once sales justify the NRE.
+
+**Year 1 hardware targets** (each has a *prototype* board to build on
+now + a *target* board when stock arrives; all board deltas behind a
+thin board-config/HAL layer so the swap is a config change, not a
+rewrite):
+
+- **Mini** — target **Waveshare ESP32-S3-DEV-KIT-N16R8-U** (SKU 34549):
+  16 MB flash, **8 MB PSRAM** (R8 deliberate — screenless Mini barely
+  uses PSRAM; don't pay for 16 MB), **external antenna (`-U`)** (the
+  one premium worth buying — it's the shed-mounted WiFi+BLE workhorse;
+  better radio = fewer of the offline/backfill/resync failures).
+  *Prototype on:* **LilyGo T-Display S3** (headless build doesn't need
+  its screen) — but its onboard antenna ≠ target's external, so **no
+  RF-range conclusions from the prototype**.
+- **Display** — target **Waveshare ESP32-S3-LCD-5** (SKU 30321). Same
+  Waveshare family as the current 4.3" board (same S3, RGB panel, GT911
+  touch, toolchain), just larger → *incremental* port, low risk.
+  *Prototype on:* the **current 4.3" Waveshare** board. **Order-time
+  check: take the 800×480 variant, not 1024×600** — pixel count (not
+  the board) drives the PSRAM-bus bandwidth behind the §9.3 tearing;
+  also confirm the SKU 30321 variant includes touch.
+
+Both modules at 8 MB PSRAM → one build target / one procurement line.
+
+**Compliance is NOT waived by using Waveshare boards.** The
+pre-certified WROOM-1 module reduces the *radio* test burden, but the
+**finished product as sold** (in enclosure, with power + cable) still
+requires **RCM** before legal sale in Australia. A dev board is not a
+compliant end-product. RCM/EMC remains a real cost line and a hard
+pre-launch gate in Year 1.
+
+**Phase 2 (volume-triggered):** migrate to own/OEM boards — strip
+unused Waveshare peripherals (CAN, RS485, RTC, wide-range regulator),
+integrate enclosure mounting + chosen antenna, bare WROOM-1U on a
+custom PCB (LCSC/JLCPCB module+PCBA in one house) **or** a Waveshare
+OEM/ODM board. Phase 2 reuses the granular bare-module cost build-up;
+Year 1 collapses the board into a single landed line (see worksheet).
+
 #### Pricing basis + cost worksheet
 
 **Confirmed pricing rule: retail price = unit cost × 1.60** (60% markup
-on cost; ≈37.5% gross margin). Fill the worksheet per SKU once supplier
-quotes are in:
+on cost; ≈37.5% gross margin).
 
-| Cost line | Display | Mini | Connect |
-|---|---|---|---|
-| BOM (MCU, panel, PCB, connectors, power, passives) | TBD | TBD | = D+M parts |
-| Enclosure (filament + machine-hrs + post-proc + shop rate) | TBD | TBD | TBD |
-| Assembly + flash + QA labour | TBD | TBD | TBD (pair) |
-| Packaging | TBD | TBD | TBD |
-| Amortised NRE ÷ projected volume | TBD | TBD | TBD |
-| **Cloud-years baked in** (see below) | n/a | **TBD** | **TBD** |
-| **Unit cost** | Σ | Σ | Σ |
-| **Retail = cost × 1.60** | | | |
+> **Live numbers live in the spreadsheet `Origin_Primus_Pricing.xlsx`
+> (in `docs/`) — the single source of truth for the cost worksheet,
+> volume tiers, and Pro pricing; Andrew enters quotes there.**
+> `PRICING_AND_COST_MODEL.md` holds the same structure as
+> reasoning/rationale for Claude sessions. This section keeps only the
+> *why*; do not maintain a third worksheet here (divergence risk).
 
 **Two cost factors that bite if missed:**
 
@@ -904,6 +942,35 @@ The split **minimises NRE-at-risk** (the original driver):
 exactly as today's Primus does. The Display is invisible to the cloud.
 (Optional future nicety: the Mini could report "display attached" as
 support telemetry — not required.)
+
+### 9.9 Mini self-serve provisioning
+
+> Decided 2026-05-18: full self-serve, professional UX, no shortcuts.
+> RGB status LED + enclosure light-pipe approved.
+
+The screenless Mini replaces the 4.3" Primus's on-LCD WiFi/API-key
+entry with a **unified claim-code model**. Two credentials: a factory
+**bootstrap secret** = `HMAC(MASTER_KEY, mac)` (flashed to NVS +
+printed in the unit QR; cloud verifies by recompute — no per-device
+secret DB), and the **operational API key** minted on claim. WiFi is
+decoupled and local (BLE for bare Mini, Display touchscreen→UART for
+Connect); the device checks in via `POST /provision/checkin`
+(bootstrap-auth), the user claims it from the logged-in App/portal via
+`POST /app/primus/claim` (JWT-auth, scanning the unit QR or a
+Display-shown pairing code), and the device pulls its key over TLS.
+**No key on BLE; no human sees a key.** Full state machine, BLE/UART
+contract, endpoints (`/provision/checkin`, `/app/primus/claim|:id|GET`)
+and threat model: **canonical
+[`PROVISIONING_CONTRACT.md`](./PROVISIONING_CONTRACT.md)**; slices in
+`CLAUDE_PRIMUS_MINI_PROVISIONING.md` / `CLAUDE_APP_MINI_PROVISIONING.md`.
+
+**Deliberately net-new cloud scope** (unlike the split): a
+bootstrap-auth checkin endpoint + JWT claim endpoints + one
+backward-compatible migration (`device_mac` / `claimed_via` /
+`claim_state` / `claimed_at` / `unbound_at` on `primus_devices`;
+existing admin rows keep `device_mac NULL`, `claimed_via='admin'`). A
+new `MASTER_KEY` secret lives in cloud env + the flashing tool only.
+Spec only — not yet implemented (standing hold).
 
 ---
 

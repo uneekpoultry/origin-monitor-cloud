@@ -34,6 +34,51 @@ the cable. No third firmware. The Mini firmware is the priority — it
 reuses 100% of the hardened cloud stack and alone unlocks the whole app
 value. Ship the Mini first.
 
+### Year-1 hardware targets (decided 2026-05-18, w/ Primus session)
+
+Each unit has a **prototype board (build on now)** and a **Year-1
+target board (when stock arrives)**. Write all board differences behind
+a **thin board-config / HAL layer** (pin map, panel driver, antenna,
+touch controller as one swappable config header) so prototype→target is
+a config swap, not a rewrite. This is what makes the swap "not tricky"
+— by design, not by hope.
+
+**Mini**
+- **Target:** Waveshare **ESP32-S3-DEV-KIT-N16R8-U** (SKU 34549).
+  16 MB flash, **8 MB PSRAM** (R8 — deliberate; screenless Mini barely
+  uses PSRAM, don't pay for 16 MB), **external antenna (`-U`)** — the
+  one premium that matters for a shed-mounted WiFi+BLE node.
+- **Prototype on now:** **LilyGo T-Display S3**. Headless Mini firmware
+  doesn't use its screen and barely uses PSRAM, so functionally fine.
+  ⚠ T-Display S3 has an **onboard PCB antenna**, not external — so
+  **draw NO WiFi/BLE range/reliability conclusions from the prototype**;
+  that's the whole reason for the `-U` target board. Confirm the
+  specific T-Display S3 PSRAM variant (some ship 2 MB — OK for Mini).
+
+**Display**
+- **Target:** Waveshare **ESP32-S3-LCD-5** (SKU 30321). Per Andrew,
+  this is **the same Waveshare family as the current 4.3" Primus board
+  — same ESP32-S3, same RGB-parallel panel + GT911 touch, same
+  pioarduino toolchain — just a larger panel.** So the port is
+  *incremental* (panel driver + resolution config), not an architecture
+  change. Low risk.
+- **Prototype on now:** the **current 4.3" Waveshare** Primus board —
+  ideal continuity.
+- **The one order-time check — RESOLUTION, not touch.** The 5" is sold
+  in **800×480 *or* 1024×600**. **Order the 800×480 variant.** The
+  board being identical doesn't matter here — *pixel count* drives
+  PSRAM-bus bandwidth, and 1024×600 (~60% more pixels) is exactly what
+  re-opens the §9.3 tearing fight. Treat as a 4.3"→5" port at the
+  *same* 800×480. Also confirm SKU 30321 includes touch (Waveshare
+  lists touch/non-touch options even on the 4.3").
+
+Keep both modules at **8 MB PSRAM** so it's one build target / one
+procurement line across Mini and Display.
+
+Phase 2 (volume-triggered) moves to own/OEM boards — no firmware
+rearchitecture expected, just board-bring-up deltas (and the HAL layer
+makes that swap cheap too).
+
 ---
 
 ## The link: wired UART, in-enclosure
