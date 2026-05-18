@@ -539,6 +539,15 @@ primusRouter.post(
     // in the same request gets a clean cycle.
     const incomingResults = parsed.data.command_results ?? [];
     let justCompletedResyncSuccessfully = false;
+    // Side-effect events raised during result processing (a recurring
+    // Primus "skipped" needs support visibility). Batched after the loop.
+    const resultDerivedEvents: {
+      primus_id: string;
+      observed_at: string;
+      severity: "warn";
+      source: string;
+      message: string;
+    }[] = [];
     if (incomingResults.length > 0) {
       for (const r of incomingResults) {
         // Scope to this device so a compromised key can't mark another
@@ -553,42 +562,108 @@ primusRouter.post(
           .eq("primus_id", req.primus!.deviceId)
           .select("type, params")
           .maybeSingle();
-        if (
-          updated?.type === "resync" &&
-          r.status === "ok"
-        ) {
-          justCompletedResyncSuccessfully = true;
-        }
 
-        // If this command was linked to one or more sensor_resync_requests
-        // rows, mark them all fulfilled. The gap-fill-retry path links a
-        // single id; the auto-gap-detect path links many (one per gappy
-        // sensor) since one Primus resync command covers multiple sensors.
-        if (updated?.type === "resync") {
-          const params = updated.params as
-            | { resync_request_id?: string; resync_request_ids?: string[] }
-            | null;
-          const linkedIds = [
-            ...(params?.resync_request_id ? [params.resync_request_id] : []),
-            ...(params?.resync_request_ids ?? []),
-          ];
-          if (linkedIds.length > 0) {
-            await supabaseAdmin
-              .from("sensor_resync_requests")
-              .update({
-                fulfilled_at: new Date().toISOString(),
-                fulfilled_count:
-                  (r.result as { readings_uploaded?: number } | undefined)
-                    ?.readings_uploaded ?? null,
-                fulfilled_error:
-                  r.status === "error"
-                    ? ((r.result as { error?: string } | undefined)?.error ??
-                      "primus_reported_error")
-                    : null,
-              })
-              .in("id", linkedIds);
+        if (updated?.type !== "resync") continue;
+
+        // ── fine_status: the richer resync outcome lives inside the
+        // result JSON (the wire `status` stays a binary ok|error so the
+        // schema contract doesn't change). Old firmware doesn't send it
+        // — fall back to the binary status, mapping a bare "error" to
+        // "skipped" so the retry sweep re-queues, matching the
+        // pre-fine_status behaviour where any non-ok set fulfilled_error.
+        // New firmware sends ok | partial | no_data | skipped.
+        // Contract: CLAUDE_PRIMUS_RESYNC_FIXES.md §Priority 1.
+        const result = (r.result ?? {}) as Record<string, unknown>;
+        const rawFine = result.fine_status;
+        const fineStatus: "ok" | "partial" | "no_data" | "skipped" =
+          rawFine === "ok" ||
+          rawFine === "partial" ||
+          rawFine === "no_data" ||
+          rawFine === "skipped"
+            ? rawFine
+            : r.status === "ok"
+              ? "ok"
+              : "skipped";
+
+        // Honest stored count: prefer cloud-confirmed inserted
+        // (Priority 2), then posted, then the legacy readings_uploaded
+        // alias.
+        const num = (v: unknown): number | null =>
+          typeof v === "number" && Number.isFinite(v) ? v : null;
+        const storedCount =
+          num(result.readings_inserted) ??
+          num(result.readings_posted) ??
+          num(result.readings_uploaded);
+
+        let fulfilledError: string | null = null;
+        let fulfilledCount: number | null = storedCount;
+
+        switch (fineStatus) {
+          case "ok":
+            // Closed-loop 72h density check below verifies completeness.
+            justCompletedResyncSuccessfully = true;
+            break;
+          case "partial":
+            // Data lost mid-drain. fulfilled_error makes the retry
+            // sweep re-queue automatically.
+            fulfilledError = "primus_partial_drain";
+            break;
+          case "no_data":
+            // Primus correctly observed an empty sensor buffer — not a
+            // failure. Fulfilled with zero, no retry, no density check.
+            fulfilledCount = 0;
+            break;
+          case "skipped": {
+            const skipReason =
+              typeof result.skip_reason === "string" &&
+              result.skip_reason.trim() !== ""
+                ? result.skip_reason.trim()
+                : typeof result.error === "string" &&
+                    result.error.trim() !== ""
+                  ? result.error.trim()
+                  : "unknown";
+            fulfilledError = `primus_skipped:${skipReason}`;
+            // Surface recurring skips to support — a Primus that keeps
+            // skipping resyncs (WiFi never reconnects, key empty) is a
+            // field problem the density check alone won't explain.
+            resultDerivedEvents.push({
+              primus_id: req.primus!.deviceId,
+              observed_at: new Date().toISOString(),
+              severity: "warn",
+              source: "resync",
+              message: `Resync skipped: ${skipReason}`,
+            });
+            break;
           }
         }
+
+        // Link to sensor_resync_requests. The gap-fill-retry path links
+        // a single id; the auto-gap-detect path links many (one per
+        // gappy sensor) since one Primus resync covers multiple sensors.
+        const params = updated.params as
+          | { resync_request_id?: string; resync_request_ids?: string[] }
+          | null;
+        const linkedIds = [
+          ...(params?.resync_request_id ? [params.resync_request_id] : []),
+          ...(params?.resync_request_ids ?? []),
+        ];
+        if (linkedIds.length > 0) {
+          await supabaseAdmin
+            .from("sensor_resync_requests")
+            .update({
+              fulfilled_at: new Date().toISOString(),
+              fulfilled_count: fulfilledCount,
+              fulfilled_error: fulfilledError,
+            })
+            .in("id", linkedIds);
+        }
+      }
+
+      if (resultDerivedEvents.length > 0) {
+        await supabaseAdmin.from("primus_events").upsert(resultDerivedEvents, {
+          onConflict: "primus_id,observed_at,source,message",
+          ignoreDuplicates: true,
+        });
       }
     }
     t.mark("results"); // command_results processing
@@ -816,7 +891,12 @@ primusRouter.post(
     // claim (BLE interrupted), and once the Primus came back, no chain
     // re-queued the work for it because gap-detection only fires on
     // currently-stale sensors.
+    // Normal floor: every backlog row waits at least this long so the
+    // App's Realtime subscription gets first refusal. The circuit
+    // breaker (below) stretches this to 30 min for sensors the Primus
+    // has been repeatedly failing to resync.
     const OPPORTUNISTIC_PICKUP_DELAY_MS = 2 * 60 * 1000;
+    const OPPORTUNISTIC_PICKUP_DELAY_TRIPPED_MS = 30 * 60 * 1000;
     const opportunisticCutoff = new Date(
       nowMs - OPPORTUNISTIC_PICKUP_DELAY_MS,
     ).toISOString();
@@ -848,8 +928,29 @@ primusRouter.post(
           req.primus!.userId,
           [...new Set(backlog.map((r) => r.sensor_id))],
         );
-        const eligible = backlog.filter((r) =>
+        const activeEligible = backlog.filter((r) =>
           inActiveHatch.has(r.sensor_id),
+        );
+
+        // Circuit breaker: for sensors the Primus has been repeatedly
+        // failing to resync, hold its pickup back from the 2-min floor
+        // to 30 min so the App's Realtime subscription gets a long
+        // uncontested window to backfill from BLE. A single Primus
+        // success on the sensor clears the breaker. Backlog rows
+        // already passed the 2-min floor in the query above; tripped
+        // sensors additionally need to have waited the 30-min window.
+        const trippedCutoff = new Date(
+          nowMs - OPPORTUNISTIC_PICKUP_DELAY_TRIPPED_MS,
+        ).toISOString();
+        const trippedSensors = await primusBreakerTrippedSensors(
+          req.primus!.userId,
+          [...new Set(activeEligible.map((r) => r.sensor_id))],
+          nowMs,
+        );
+        const eligible = activeEligible.filter((r) =>
+          trippedSensors.has(r.sensor_id)
+            ? r.requested_at < trippedCutoff
+            : true,
         );
 
         if (eligible.length > 0) {
@@ -1349,6 +1450,101 @@ async function sensorsInActiveHatch(
     if (row.ambient_sensor_id) out.add(row.ambient_sensor_id);
   }
   return out;
+}
+
+// ----------------------------------------------------------------------------
+// Circuit breaker — adaptive Primus/App resync arbitration
+// ----------------------------------------------------------------------------
+//
+// Background (2026-05-17): a Primus with a firmware fault (BLE/PSRAM
+// contention, TLS warm-up failure, key empty) can claim a sensor's
+// resync backlog every heartbeat, fail it, and re-claim — monopolising
+// the sensor so the App's Realtime subscription never gets an
+// uncontested window to backfill from BLE. Observed in the field: 3
+// sensors stuck IN_FLIGHT claimed by a Primus for 22h while an able App
+// sat idle, because the 2-min opportunistic delay always elapsed before
+// the App's next foreground Realtime tick.
+//
+// The breaker watches per-sensor Primus resync outcomes. If the Primus
+// has failed a sensor's resyncs >= CIRCUIT_BREAKER_FAILURE_THRESHOLD
+// times within CIRCUIT_BREAKER_WINDOW_MS *since its last success on that
+// sensor*, the breaker trips for that sensor: the opportunistic backlog
+// holds Primus pickup back from 2 min to 30 min, handing the App a long
+// uncontested window. A single successful Primus resync (fine_status
+// "ok" or "no_data") on the sensor clears the breaker for it.
+//
+// Failure signal = sensor_resync_requests rows claimed by a Primus
+// (claimed_by LIKE 'primus:%') with fulfilled_error set. That covers
+// primus_partial_drain, primus_skipped:*, primus_reported_error and
+// primus_command_timed_out. fine_status "no_data" sets no error, so a
+// genuinely-empty sensor buffer never trips the breaker — only real
+// faults do. The design is symmetric in principle (an unreliable App
+// could be throttled the same way) but the App claims directly via
+// Supabase without an API round-trip, so only the Primus side is
+// arbitrated here.
+
+const CIRCUIT_BREAKER_WINDOW_MS = 60 * 60 * 1000;
+const CIRCUIT_BREAKER_FAILURE_THRESHOLD = 3;
+
+async function primusBreakerTrippedSensors(
+  userId: string,
+  sensorIds: string[],
+  nowMs: number,
+): Promise<Set<string>> {
+  const tripped = new Set<string>();
+  if (sensorIds.length === 0) return tripped;
+
+  const windowCutoff = new Date(
+    nowMs - CIRCUIT_BREAKER_WINDOW_MS,
+  ).toISOString();
+
+  const { data } = await supabaseAdmin
+    .from("sensor_resync_requests")
+    .select("sensor_id, claimed_at, fulfilled_at, fulfilled_error")
+    .eq("user_id", userId)
+    .in("sensor_id", sensorIds)
+    .like("claimed_by", "primus:%")
+    .gte("claimed_at", windowCutoff);
+
+  if (!data || data.length === 0) return tripped;
+
+  // Per sensor: find the most recent successful Primus resync, then
+  // count failures claimed strictly after it. A success resets the
+  // count (the breaker is about *recent* unproductive contention, not
+  // lifetime failures).
+  const bySensor = new Map<
+    string,
+    { claimedAt: string; success: boolean; failure: boolean }[]
+  >();
+  for (const row of data) {
+    if (!row.sensor_id || !row.claimed_at) continue;
+    const success = row.fulfilled_at != null && row.fulfilled_error == null;
+    const failure = row.fulfilled_error != null;
+    if (!success && !failure) continue; // still in-flight — ignore
+    if (!bySensor.has(row.sensor_id)) bySensor.set(row.sensor_id, []);
+    bySensor.get(row.sensor_id)!.push({
+      claimedAt: row.claimed_at,
+      success,
+      failure,
+    });
+  }
+
+  for (const [sensorId, rows] of bySensor) {
+    // ISO-8601 strings sort lexically by time. "" precedes any
+    // timestamp, so if there's no success every failure counts.
+    let lastSuccessAt = "";
+    for (const r of rows) {
+      if (r.success && r.claimedAt > lastSuccessAt) lastSuccessAt = r.claimedAt;
+    }
+    const failuresSinceSuccess = rows.filter(
+      (r) => r.failure && r.claimedAt > lastSuccessAt,
+    ).length;
+    if (failuresSinceSuccess >= CIRCUIT_BREAKER_FAILURE_THRESHOLD) {
+      tripped.add(sensorId);
+    }
+  }
+
+  return tripped;
 }
 
 // ----------------------------------------------------------------------------
