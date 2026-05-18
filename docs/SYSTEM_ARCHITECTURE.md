@@ -750,6 +750,161 @@ Card 7 above describes the full overlay. Until then, alarm conditions trigger a 
 
 Sidebar tearing under PSRAM bus contention is mitigated by `g_lvgl_pause_until_ms` — see section 9.3 above. Reduces tearing from "continuous during cycle" to "~1 second per minute". Full elimination via `fb_num = 2` queued.
 
+### 9.8 Product line — Display / Mini / Connect (hardware split + upgrade model)
+
+> **Status:** decided 2026-05-18 (Andrew + Cloud session). Canonical
+> decision record. Firmware split + serial protocol briefed to Claude
+> Primus separately (`CLAUDE_PRIMUS_MINI_DISPLAY_SPLIT.md`).
+
+#### The problem this solves
+
+Effectively every hard reliability failure in the programme traces to
+**one ESP32-S3 doing WiFi + BLE-scan + LVGL at once**: display tearing
+(BLE scan starving LVGL / PSRAM bus contention, §9.3), resync stalls,
+the C3-comms history rework, the TLS-warmup and deferred-heartbeat
+workarounds. The hardware fix — a custom dual-ESP board — was quoted at
+a price that's unreasonable to commit before the ecosystem is
+revenue-validated.
+
+**Decision:** instead of one expensive custom board, split the function
+across single-responsibility units. Each radio job lives on exactly one
+chip. This *is* the dual-ESP design, delivered as modular products
+rather than one NRE-heavy PCB.
+
+#### The three units
+
+| SKU | Contains | Radios | Cloud? | Standalone? |
+|---|---|---|---|---|
+| **Origin Primus Display** | Screen, graph/UI smarts, BLE, cable port | BLE only (never WiFi) | No | Yes — live values + local short history |
+| **Origin Primus Mini** | MCU, BLE + WiFi, cable port, small clip-in enclosure | BLE + WiFi | Yes | Yes — sensors → cloud → app, no screen |
+| **Origin Primus Connect** | Display + Mini joined by the cable | (per part) | Yes | n/a — it *is* the pair |
+
+`Origin Primus` is the **family name**, never a checkout SKU on its
+own — every purchasable item carries a suffix (Display / Mini /
+Connect) so a customer never has to disambiguate "Primus" vs "Primus
+Connect". Consistent with the locked Origin family (Origin Pro/Lite,
+Origin Monitor, Origin Primus).
+
+There is **one Display hardware design**. It is simultaneously the
+standalone "Display" SKU and the display half of "Connect". "Connect"
+is a bundle/packaging decision (Mini clips into a 3D-printed enclosure
+on the back of the Display; the Display ships with the cable captive
+and ready) — **not a third board**. Its unit cost ≈ Display BOM + Mini
+BOM + assembly/packaging of the pair.
+
+#### The link: wired serial, in-enclosure
+
+Display ↔ Mini communicate over a **wired UART** inside the enclosure.
+Rationale: zero RF contention (the entire point of the split), trivial
+and cheap, bulletproof over a short captive cable. The cable should
+also carry power so a wall-mounted Connect presents a single cord
+(industrial-design detail; doesn't affect firmware/cloud).
+
+#### Mode-detection state machine (Display firmware)
+
+The Display detects whether a Mini is present on the serial link and
+runs in one of two modes. **The cable is the unlock** — there is no
+licence, feature flag, or cloud check; capability is emergent from the
+data source, so it degrades gracefully (unplug Mini → falls back to
+live BLE, never bricks or nags):
+
+- **No Mini → Standalone mode.** Display listens to sensor BLE
+  advertisements directly. Shows live values + whatever short history
+  it holds locally. No cloud, no calibration offsets, no
+  config-to-cloud. Cloud-dependent features are shown **greyed-out with
+  a lock badge** (see upgrade UX below).
+- **Mini on cable → Connected mode.** Display **parks its own BLE** and
+  takes the Mini's serial feed as the single source of truth:
+  calibrated values, full cloud-backed history/graphs, alert state,
+  and config changes that sync back through the Mini to the cloud.
+
+> **The one invariant:** if a Mini is present, the Display uses the
+> cable as its *only* data source and does not also read sensors over
+> its own BLE. Never two readers at once — same reader-arbitration
+> principle as the cloud-side circuit breaker (§12.7). Deterministic,
+> no "two listeners, slightly different numbers" confusion.
+
+#### Upgrade UX — locked-but-visible (deliberate upsell)
+
+The Display deliberately shows cloud-dependent features **greyed-out
+with a small lock** when no Mini is present. This is the primary
+upgrade-conversion mechanic: the customer sees what they're missing
+every time they look at the screen. Done well (and the architecture
+makes "well" the easy path):
+
+- **The locks are honest.** Only things that *genuinely require the
+  Mini* are locked (cloud history, phone access, remote alerts,
+  anywhere-monitoring). Nothing the screen could do alone is
+  artificially crippled — that's the line between a respected upsell
+  and a resented paywall, and it's free because it matches the
+  hardware reality.
+- **Basics are never locked.** Live readings, on-device alarms, basic
+  local trend work fully standalone. The Display must feel complete on
+  its own.
+- **Show, don't nag.** Greyed control + one calm line ("Add a Primus
+  Mini to unlock cloud history & phone alerts") + one discoverable
+  "Unlock with Primus Mini" screen. No popups ambushing every tap.
+- **The unlock is a payoff moment.** Clip in the Mini → Display
+  detects it → greyed features light up with a brief "Connected —
+  cloud history & alerts unlocked" confirmation. This kills buyer's
+  remorse and drives word-of-mouth.
+- **The empty clip-in bay** labelled "Add Primus Mini here" is a
+  silent, zero-annoyance passive upsell.
+
+#### Pricing basis + cost worksheet
+
+**Confirmed pricing rule: retail price = unit cost × 1.60** (60% markup
+on cost; ≈37.5% gross margin). Fill the worksheet per SKU once supplier
+quotes are in:
+
+| Cost line | Display | Mini | Connect |
+|---|---|---|---|
+| BOM (MCU, panel, PCB, connectors, power, passives) | TBD | TBD | = D+M parts |
+| Enclosure (filament + machine-hrs + post-proc + shop rate) | TBD | TBD | TBD |
+| Assembly + flash + QA labour | TBD | TBD | TBD (pair) |
+| Packaging | TBD | TBD | TBD |
+| Amortised NRE ÷ projected volume | TBD | TBD | TBD |
+| **Cloud-years baked in** (see below) | n/a | **TBD** | **TBD** |
+| **Unit cost** | Σ | Σ | Σ |
+| **Retail = cost × 1.60** | | | |
+
+**Two cost factors that bite if missed:**
+
+1. **Recurring cloud opex.** Only Mini/Connect touch the cloud
+   (Supabase + droplet + Resend + domain) — *per active unit, forever*.
+   A one-time ×1.60 markup does not fund perpetual hosting. **Decision
+   required:** either a small subscription on the connected tier, or
+   add "N years of cloud opex per unit" into the Mini/Connect *cost*
+   line **before** applying ×1.60. This decision falls exactly on the
+   Display↔Connect line and must be explicit, not buried. Display is
+   clean (never connects).
+2. **RCM/EMC compliance (Australia).** The **Mini has a WiFi radio** →
+   likely needs RCM marking / EMC testing before sale. Real NRE that
+   lands on Mini/Connect, not Display (BLE-only is typically lighter).
+   Get a quote into the amortised-NRE line.
+
+#### Dev-time / NRE-at-risk
+
+The split **minimises NRE-at-risk** (the original driver):
+
+- **Mini** reuses **100% of the already-built, hardened cloud stack** —
+  heartbeat, readings, resync, settings sync, fine_status, circuit
+  breaker are all screen-agnostic. Near-zero incremental cloud dev. The
+  Mini is the lowest-risk, fastest-to-ship, highest-value unit (it
+  alone unlocks the entire Origin Monitor app value). **Ship it first.**
+- **Display** firmware is greenfield UI but has **no networking stack**
+  — moderate, well-scoped, far simpler than today's tri-duty Primus.
+- **Serial protocol** is small and self-contained.
+- The riskiest, most expensive thing (dual-radio Primus / custom board)
+  is now **avoided, not deferred**.
+
+#### Cloud impact
+
+**None.** The cloud only ever talks to the Mini, which presents
+exactly as today's Primus does. The Display is invisible to the cloud.
+(Optional future nicety: the Mini could report "display attached" as
+support telemetry — not required.)
+
 ---
 
 ## 10. App (Origin Monitor mobile app)
@@ -1095,7 +1250,65 @@ marked fulfilled together when the Primus completes.
 This makes the Primus the safety net: as long as it's alive and
 heartbeating, every queued request gets fulfilled within minutes
 regardless of App reliability. The App is best-effort; the Primus is
-the workhorse.
+the workhorse — *unless the circuit breaker trips* (§12.7).
+
+### 12.6 fine_status — honest resync outcomes
+
+Added 2026-05-17 alongside the Primus Priority-1 firmware fix
+(`CLAUDE_PRIMUS_RESYNC_FIXES.md`). The heartbeat wire `status` stays a
+binary `ok | error` (schema contract unchanged), but the Primus now
+reports a richer `fine_status` *inside* the command result JSON. Old
+firmware that doesn't send it falls back to the binary status (a bare
+`error` maps to `skipped`, preserving the pre-fine_status behaviour
+where any non-ok set `fulfilled_error`).
+
+Cloud reaction per `fine_status`, applied to the linked
+`sensor_resync_requests` rows:
+
+| fine_status | `fulfilled_error` | `fulfilled_count` | Density check | Notes |
+|---|---|---|---|---|
+| `ok` | `null` | inserted ?? posted ?? uploaded | yes (72h closed loop) | success |
+| `partial` | `primus_partial_drain` | stored count | no | retry sweep re-queues |
+| `no_data` | `null` | `0` | no | empty sensor buffer — *not* a failure |
+| `skipped` | `primus_skipped:{reason}` | stored count | no | retry sweep re-queues; also raises a `primus_events` warn for support visibility |
+
+`fulfilled_count` prefers cloud-confirmed `readings_inserted`
+(Priority 2), then `readings_posted`, then the legacy
+`readings_uploaded` alias — the *actual stored* count, not the
+*attempted* count.
+
+### 12.7 Circuit breaker — adaptive Primus/App arbitration
+
+Added 2026-05-17. The opportunistic pickup (§12.5) makes a *healthy*
+Primus the workhorse — but a Primus with a firmware fault (BLE/PSRAM
+contention, TLS warm-up failure, empty API key) can claim a sensor's
+backlog every heartbeat, fail it, re-claim, and monopolise the sensor
+so an able App never gets an uncontested Realtime window. Observed in
+the field: 3 sensors stuck `IN_FLIGHT` claimed by a Primus for 22h
+while the App sat idle, because the 2-min floor always elapsed before
+the App's next foreground tick.
+
+**The breaker** (`primusBreakerTrippedSensors` in `primus.ts`) watches
+per-sensor Primus resync outcomes. A sensor's breaker trips when the
+Primus has accrued ≥ `CIRCUIT_BREAKER_FAILURE_THRESHOLD` (3) failures
+within `CIRCUIT_BREAKER_WINDOW_MS` (60 min) **since its last success on
+that sensor**. While tripped, the opportunistic pickup floor for that
+sensor stretches from 2 min to **30 min**
+(`OPPORTUNISTIC_PICKUP_DELAY_TRIPPED_MS`), handing the App a long
+uncontested window. A single successful Primus resync
+(`fine_status` `ok` or `no_data`) on the sensor clears it.
+
+The failure signal is exactly the §12.6 wiring: `sensor_resync_requests`
+rows with `claimed_by LIKE 'primus:%'` and `fulfilled_error` set —
+covering `primus_partial_drain`, `primus_skipped:*`,
+`primus_reported_error` and `primus_command_timed_out`. Because
+`no_data` deliberately sets *no* error, a genuinely-empty sensor
+buffer never trips the breaker; only real faults do. The design is
+symmetric in principle (an unreliable App could be throttled the same
+way), but the App claims directly via Supabase with no API round-trip,
+so only the Primus side is arbitrated here. Auto gap-detection
+(separate path) keeps its own existing 30-min cooldown +
+3-per-24h consecutive-failure cap as an independent safeguard.
 
 ---
 
